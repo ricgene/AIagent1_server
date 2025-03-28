@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerRoutes = void 0;
+exports.registerRoutes = registerRoutes;
 const schema_js_1 = require("@shared/schema.js");
 const anthropic_js_1 = require("./anthropic.js");
 const zod_1 = require("zod");
@@ -135,7 +135,7 @@ async function registerRoutes(app) {
             // Save user message
             const userMessage = await storage_js_1.storage.createMessage({
                 fromId,
-                toId: 0,
+                toId: 0, // AI assistant ID
                 content,
                 isAiAssistant: false
             });
@@ -148,7 +148,7 @@ async function registerRoutes(app) {
             console.log("Received AI response:", aiResponse);
             // Save AI response
             const assistantMessage = await storage_js_1.storage.createMessage({
-                fromId: 0,
+                fromId: 0, // AI assistant ID
                 toId: fromId,
                 content: aiResponse,
                 isAiAssistant: true
@@ -172,7 +172,6 @@ async function registerRoutes(app) {
     });
     return app;
 }
-exports.registerRoutes = registerRoutes;
 // Separate function to initialize sample data
 async function initializeSampleData() {
     console.log("Checking if sample data needs to be initialized...");

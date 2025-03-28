@@ -51,7 +51,7 @@ Only include businesses that are genuinely relevant to the query. If none are re
       model: "claude-3-sonnet-20240229",
       max_tokens: 300,
       system: "You are a business matching algorithm that finds relevant service providers for user queries.",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user" as const, content: prompt }],
     });
 
     // Extract business IDs from the response
@@ -112,7 +112,7 @@ If no categories match, return an empty list.`;
       model: "claude-3-haiku-20240307",
       max_tokens: 50,
       system: "You are a home improvement category classifier.",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user" as const, content: prompt }],
     });
 
     const responseText = response.content[0].text.trim();
@@ -155,7 +155,7 @@ Then, if it is an emergency, briefly explain why in one short sentence.`;
       model: "claude-3-haiku-20240307",
       max_tokens: 100,
       system: "You are an emergency detection system for home improvement issues.",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user" as const, content: prompt }],
     });
 
     const responseText = response.content[0].text.trim().toLowerCase();

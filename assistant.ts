@@ -15,7 +15,7 @@ export async function getAssistantResponse(messages: Message[]): Promise<string>
   try {
     // Format conversation history for Anthropic
     const conversationHistory = messages.map(msg => ({
-      role: msg.isAiAssistant ? "assistant" : "user",
+      role: msg.isAiAssistant ? "assistant" as const : "user" as const,
       content: msg.content
     }));
 
