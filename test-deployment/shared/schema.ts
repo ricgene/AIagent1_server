@@ -1,0 +1,65 @@
+import { z } from "zod";
+
+// User schema
+export const insertUserSchema = z.object({
+  username: z.string().min(3),
+  password: z.string().min(6),
+  type: z.enum(["user", "business"]),
+  name: z.string().optional(),
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export interface User extends InsertUser {
+  id: number;
+}
+
+export const users: User[] = [];
+
+// Business schema
+export const insertBusinessSchema = z.object({
+  description: z.string(),
+  category: z.string(),
+  location: z.string(),
+  services: z.array(z.string()).optional(),
+  industryRules: z.object({
+    keywords: z.array(z.string()).optional(),
+    priority: z.number().optional(),
+    requirements: z.array(z.string()).optional(),
+    specializations: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+export type InsertBusiness = z.infer<typeof insertBusinessSchema>;
+
+export interface Business extends InsertBusiness {
+  id: number;
+  userId: number;
+}
+
+export interface IndustryRule {
+  keywords?: string[];
+  priority?: number;
+  requirements?: string[];
+  specializations?: string[];
+}
+
+export const businesses: Business[] = [];
+
+// Message schema
+export const insertMessageSchema = z.object({
+  fromId: z.number(),
+  toId: z.number(),
+  content: z.string(),
+  isAiAssistant: z.boolean().optional(),
+});
+
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+export interface Message extends InsertMessage {
+  id: number;
+  timestamp: Date;
+  isAiAssistant: boolean;
+}
+
+export const messages: Message[] = [];
