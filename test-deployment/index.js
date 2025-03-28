@@ -2,6 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 
+// Initialize Anthropic client with API key from environment variable
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
+});
+
 const app = express();
 
 // Enable CORS and JSON parsing
@@ -53,11 +58,54 @@ function initSampleData() {
   };
   storage.businesses.set(business.id, business);
   
-  console.log("Sample data initialized:", { user, business });
+  // Add a tech business for variety
+  const techUser = {
+    id: storage.currentId.users++,
+    username: "techhub",
+    type: "business",
+    name: "TechHub Solutions"
+  };
+  storage.users.set(techUser.id, techUser);
+  
+  const techBusiness = {
+    id: storage.currentId.businesses++,
+    userId: techUser.id,
+    description: "Expert IT consulting and software development services. Specializing in web applications, mobile apps, and cloud solutions.",
+    category: "Technology",
+    location: "San Francisco, CA",
+    services: ["Web Development", "Mobile Apps", "Cloud Computing", "IT Consulting"],
+    industryRules: {
+      keywords: ["software", "web", "mobile", "cloud", "IT", "digital", "tech", "application"],
+      specializations: ["Web Applications", "Mobile Development", "Cloud Solutions"]
+    }
+  };
+  storage.businesses.set(techBusiness.id, techBusiness);
+  
+  console.log("Sample data initialized with businesses:", Array.from(storage.businesses.values()).map(b => b.id));
 }
 
 // Initialize on first run
 let initialized = false;
+
+// Endpoint to log API key status (without revealing the key)
+app.get('/api/status', (req, res) => {
+  if (!initialized) {
+    initSampleData();
+    initialized = true;
+  }
+  
+  const apiKeyStatus = process.env.ANTHROPIC_API_KEY ? 
+    "API key is set (first 4 chars: " + process.env.ANTHROPIC_API_KEY.substring(0, 4) + "...)" : 
+    "API key is NOT set";
+  
+  res.json({
+    message: "API status",
+    timestamp: new Date().toISOString(),
+    anthropicApiKeyStatus: apiKeyStatus,
+    initialized: initialized,
+    businessCount: storage.businesses.size
+  });
+});
 
 // Test endpoint
 app.get('/api/test', (req, res) => {
@@ -74,7 +122,7 @@ app.get('/api/test', (req, res) => {
   });
 });
 
-// Business search endpoint
+// Business search endpoint with Anthropic AI
 app.get('/api/businesses/search', async (req, res) => {
   try {
     if (!initialized) {
@@ -92,20 +140,83 @@ app.get('/api/businesses/search', async (req, res) => {
       return res.json(businesses);
     }
     
-    // Since this is a simple demo, we'll just return all businesses
-    // In a real implementation, you would call Anthropic's API here
-    return res.json({
-      query: query,
-      businesses: businesses,
-      message: "AI matching is disabled in this demo"
-    });
+    // Use Anthropic to match businesses to the query
+    try {
+      // Format business data for the prompt
+      const businessData = businesses.map((business, index) => {
+        return `Business ${index + 1}:
+ID: ${business.id}
+Name: ${business.name || `User ${business.userId}`}
+Description: ${business.description}
+Category: ${business.category}
+Location: ${business.location}
+Services: ${business.services ? business.services.join(", ") : "N/A"}
+Keywords: ${business.industryRules?.keywords ? business.industryRules.keywords.join(", ") : "N/A"}
+Specializations: ${business.industryRules?.specializations ? business.industryRules.specializations.join(", ") : "N/A"}`;
+      }).join("\n\n");
+
+      // Create prompt for Claude
+      const prompt = `I need to match the following user query to the most relevant businesses. Please analyze the query and return the IDs of businesses that match, in order of relevance.
+
+User Query: "${query}"
+
+${businessData}
+
+Analyze which businesses are most relevant to the user's query. Consider service offerings, specializations, keywords, and the semantic meaning of the query.
+Return a comma-separated list of business IDs, ordered by relevance (most relevant first).
+Only include businesses that are genuinely relevant to the query. If none are relevant, return an empty list.`;
+
+      console.log("Sending request to Anthropic API");
+      
+      // Get response from Anthropic
+      const response = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 300,
+        system: "You are a business matching algorithm that finds relevant service providers for user queries.",
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      console.log("Received response from Anthropic API:", response.content[0].text);
+
+      // Extract business IDs from the response
+      const responseText = response.content[0].text.trim();
+      if (!responseText) {
+        return res.json({ businesses: [], message: "No matching businesses found" });
+      }
+
+      // Parse the response to get business IDs
+      const businessIds = responseText
+        .split(",")
+        .map(id => id.trim())
+        .filter(id => /^\d+$/.test(id)) // Ensure we only have numeric IDs
+        .map(id => parseInt(id, 10));
+
+      // Map business IDs back to actual businesses and maintain the order
+      const matchedBusinesses = businessIds
+        .map(id => businesses.find(b => b.id === id))
+        .filter(Boolean);
+
+      return res.json({
+        query: query,
+        businesses: matchedBusinesses,
+        response: responseText
+      });
+    } catch (anthropicError) {
+      console.error("Error using Anthropic API:", anthropicError);
+      return res.json({
+        query: query,
+        businesses: businesses,
+        error: "Error using Anthropic API: " + anthropicError.message,
+        note: "Returning all businesses as fallback"
+      });
+    }
   } catch (error) {
     console.error("Error in business search:", error);
     res.status(500).json({ error: "Failed to search businesses" });
   }
 });
 
-// Chat endpoint
+// Chat endpoint with Anthropic AI
 app.post('/api/chat', async (req, res) => {
   try {
     if (!initialized) {
@@ -120,25 +231,88 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: "Missing userId or message" });
     }
     
-    // For demo purposes, just echo the message back
-    return res.json({
-      userMessage: {
+    // Create a user message
+    const userMessage = {
+      id: storage.currentId.messages++,
+      fromId: userId,
+      toId: 0, // AI assistant ID
+      content: message,
+      timestamp: new Date(),
+      isAiAssistant: false
+    };
+    
+    // Store the message
+    storage.messages.push(userMessage);
+    
+    try {
+      // Get recent conversation history
+      const conversationHistory = storage.messages
+        .filter(msg => (msg.fromId === userId && msg.toId === 0) || (msg.fromId === 0 && msg.toId === userId))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        .slice(-10) // Get last 10 messages
+        .map(msg => ({
+          role: msg.isAiAssistant ? "assistant" : "user",
+          content: msg.content
+        }));
+      
+      // Define system prompt
+      const systemPrompt = `You are a helpful AI assistant for a home improvement service. 
+      Provide friendly, professional responses to customer inquiries about home improvement services.
+      If asked about urgent situations like water leaks, electrical hazards, or structural damage, 
+      emphasize the importance of immediate professional help.
+      Never promise specific prices, but you can discuss general price ranges and factors that affect pricing.`;
+      
+      console.log("Sending chat request to Anthropic API");
+      
+      // Make API call to Anthropic
+      const response = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 500,
+        system: systemPrompt,
+        messages: conversationHistory,
+      });
+      
+      console.log("Received chat response from Anthropic API");
+      
+      const aiContent = response.content[0].text;
+      
+      // Create and store AI response
+      const assistantMessage = {
         id: storage.currentId.messages++,
-        fromId: userId,
-        toId: 0,
-        content: message,
+        fromId: 0, // AI assistant ID
+        toId: userId,
+        content: aiContent,
         timestamp: new Date(),
-        isAiAssistant: false
-      },
-      assistantMessage: {
+        isAiAssistant: true
+      };
+      
+      storage.messages.push(assistantMessage);
+      
+      return res.json({
+        userMessage,
+        assistantMessage
+      });
+    } catch (anthropicError) {
+      console.error("Error using Anthropic API for chat:", anthropicError);
+      
+      // Create a fallback response
+      const assistantMessage = {
         id: storage.currentId.messages++,
         fromId: 0,
         toId: userId,
-        content: `Echo: ${message}\n\nThis is a demo response without using the Anthropic API.`,
+        content: "I apologize, but I'm having trouble connecting to my AI service right now. Please try again later.",
         timestamp: new Date(),
         isAiAssistant: true
-      }
-    });
+      };
+      
+      storage.messages.push(assistantMessage);
+      
+      return res.json({
+        userMessage,
+        assistantMessage,
+        error: "Error using Anthropic API: " + anthropicError.message
+      });
+    }
   } catch (error) {
     console.error("Error in chat:", error);
     res.status(500).json({ error: "Failed to process chat" });
@@ -156,6 +330,7 @@ app.all('*', (req, res) => {
     message: `Endpoint accessed: ${req.method} ${req.originalUrl}`,
     timestamp: new Date().toISOString(),
     available: [
+      "/api/status",
       "/api/test",
       "/api/businesses/search?q=query",
       "/api/chat (POST)"
