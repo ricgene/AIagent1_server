@@ -1,143 +1,19 @@
 import type { Express } from "express";
-import { createServer } from "http";
-import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage.js";
 import { insertUserSchema, insertBusinessSchema, insertMessageSchema } from "@shared/schema.js";
 import { matchBusinessesToQuery } from "./anthropic.js";
 import { ZodError } from "zod";
 import { getAssistantResponse } from "./assistant.js";
+import { storage } from "./storage.js";
+
+// Flag to track if sample data has been initialized
+let samplesInitialized = false;
 
 export async function registerRoutes(app: Express) {
-  const httpServer = createServer(app);
-
-  // Update the sample business creation section
-  const sampleBusinesses = [
-    {
-      username: "techhub",
-      password: "password123",
-      type: "business" as const,
-      name: "TechHub Solutions",
-    },
-    {
-      username: "homefix",
-      password: "password123",
-      type: "business" as const,
-      name: "HomeFix Pro",
-    },
-    {
-      username: "healthplus",
-      password: "password123",
-      type: "business" as const,
-      name: "HealthPlus Services",
-    },
-  ];
-
-  // Update the business creation part
-  console.log("Creating sample businesses...");
-  for (const business of sampleBusinesses) {
-    try {
-      console.log(`Creating user for ${business.name}...`);
-      const user = await storage.createUser(business);
-      console.log(`Created user:`, user);
-
-      console.log(`Creating business profile for ${business.name}...`);
-      await storage.createBusiness(user.id, {
-        description: business.name === "TechHub Solutions"
-          ? "Expert IT consulting and software development services. Specializing in web applications, mobile apps, and cloud solutions."
-          : business.name === "HomeFix Pro"
-          ? "Professional home repair and maintenance services. From basic repairs to major renovations, we do it all."
-          : "Comprehensive healthcare services including preventive care, wellness programs, and specialized treatments.",
-        category: business.name === "TechHub Solutions"
-          ? "Technology"
-          : business.name === "HomeFix Pro"
-          ? "Home Services"
-          : "Healthcare",
-        location: "New York, NY",
-        services: business.name === "TechHub Solutions"
-          ? ["Web Development", "Mobile Apps", "Cloud Computing", "IT Consulting"]
-          : business.name === "HomeFix Pro"
-          ? ["Home Repairs", "Renovation", "Plumbing", "Electrical", "HVAC"]
-          : ["Primary Care", "Wellness Programs", "Specialized Care", "Telemedicine"],
-        industryRules: business.name === "TechHub Solutions"
-          ? {
-              keywords: ["software", "web", "mobile", "cloud", "IT", "digital", "tech", "application"],
-              priority: 8,
-              requirements: ["Software Development", "Cloud Architecture", "Agile Methodology"],
-              specializations: ["Web Applications", "Mobile Development", "Cloud Solutions"]
-            }
-          : business.name === "HomeFix Pro"
-          ? {
-              keywords: ["repair", "renovation", "maintenance", "install", "fix", "home", "house", "building"],
-              priority: 9,
-              requirements: ["Licensed Contractor", "HVAC Certified", "Electrical License"],
-              specializations: ["Home Renovation", "HVAC Systems", "Electrical Work", "Plumbing"]
-            }
-          : {
-              keywords: ["health", "medical", "wellness", "care", "treatment", "therapy", "diagnosis"],
-              priority: 7,
-              requirements: ["Medical License", "Board Certification", "HIPAA Compliance"],
-              specializations: ["Primary Care", "Preventive Medicine", "Telemedicine"]
-            }
-      });
-      console.log(`Created business profile for ${business.name}`);
-    } catch (error) {
-      console.error(`Error creating sample business ${business.name}:`, error);
-    }
+  // Only create sample businesses once to avoid duplication on cold starts
+  if (!samplesInitialized) {
+    await initializeSampleData();
+    samplesInitialized = true;
   }
-
-  // WebSocket setup for real-time messaging
-  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
-
-  // Ensure WebSocket server shuts down cleanly
-  httpServer.on('close', () => {
-    wss.clients.forEach(client => {
-      client.terminate();
-    });
-    console.log("WebSocket server closed");
-  });
-
-  const clients = new Map<number, WebSocket>();
-
-  wss.on("connection", (ws) => {
-    console.log("WebSocket connection established");
-
-    ws.on("message", (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-        if (msg.type === "auth" && msg.userId) {
-          clients.set(msg.userId, ws);
-          console.log(`User ${msg.userId} authenticated via WebSocket`);
-        }
-      } catch (e) {
-        console.error("WebSocket message error:", e);
-      }
-    });
-
-    ws.on("error", (error) => {
-      console.error("WebSocket error:", error);
-    });
-
-    ws.on("close", (code, reason) => {
-      console.log(`WebSocket closed with code ${code}. Reason: ${reason}`);
-      // Remove client from the map when disconnected
-      for (const [userId, client] of clients.entries()) {
-        if (client === ws) {
-          clients.delete(userId);
-          console.log(`User ${userId} disconnected`);
-          break;
-        }
-      }
-    });
-
-    // Send a ping every 30 seconds to keep the connection alive
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      } else {
-        clearInterval(pingInterval);
-      }
-    }, 30000);
-  });
 
   // User routes
   app.post("/api/users", async (req, res) => {
@@ -224,13 +100,9 @@ export async function registerRoutes(app: Express) {
     try {
       const messageData = insertMessageSchema.parse(req.body);
       const message = await storage.createMessage(messageData);
-
-      // Notify recipient through WebSocket if connected
-      const recipientWs = clients.get(message.toId);
-      if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
-        recipientWs.send(JSON.stringify(message));
-      }
-
+      
+      // Note: WebSocket notifications removed for serverless compatibility
+      
       res.json(message);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -305,5 +177,91 @@ export async function registerRoutes(app: Express) {
     }
   });
 
-  return httpServer;
+  return app;
+}
+
+// Separate function to initialize sample data
+async function initializeSampleData() {
+  console.log("Checking if sample data needs to be initialized...");
+  
+  // You might want to add a check here to see if data already exists
+  // before creating samples, for example:
+  // const existingBusinesses = await storage.getAllBusinesses();
+  // if (existingBusinesses.length > 0) {
+  //   console.log("Sample data already exists, skipping initialization");
+  //   return;
+  // }
+  
+  const sampleBusinesses = [
+    {
+      username: "techhub",
+      password: "password123",
+      type: "business" as const,
+      name: "TechHub Solutions",
+    },
+    {
+      username: "homefix",
+      password: "password123",
+      type: "business" as const,
+      name: "HomeFix Pro",
+    },
+    {
+      username: "healthplus",
+      password: "password123",
+      type: "business" as const,
+      name: "HealthPlus Services",
+    },
+  ];
+
+  console.log("Creating sample businesses...");
+  for (const business of sampleBusinesses) {
+    try {
+      console.log(`Creating user for ${business.name}...`);
+      const user = await storage.createUser(business);
+      console.log(`Created user:`, user);
+
+      console.log(`Creating business profile for ${business.name}...`);
+      await storage.createBusiness(user.id, {
+        description: business.name === "TechHub Solutions"
+          ? "Expert IT consulting and software development services. Specializing in web applications, mobile apps, and cloud solutions."
+          : business.name === "HomeFix Pro"
+          ? "Professional home repair and maintenance services. From basic repairs to major renovations, we do it all."
+          : "Comprehensive healthcare services including preventive care, wellness programs, and specialized treatments.",
+        category: business.name === "TechHub Solutions"
+          ? "Technology"
+          : business.name === "HomeFix Pro"
+          ? "Home Services"
+          : "Healthcare",
+        location: "New York, NY",
+        services: business.name === "TechHub Solutions"
+          ? ["Web Development", "Mobile Apps", "Cloud Computing", "IT Consulting"]
+          : business.name === "HomeFix Pro"
+          ? ["Home Repairs", "Renovation", "Plumbing", "Electrical", "HVAC"]
+          : ["Primary Care", "Wellness Programs", "Specialized Care", "Telemedicine"],
+        industryRules: business.name === "TechHub Solutions"
+          ? {
+              keywords: ["software", "web", "mobile", "cloud", "IT", "digital", "tech", "application"],
+              priority: 8,
+              requirements: ["Software Development", "Cloud Architecture", "Agile Methodology"],
+              specializations: ["Web Applications", "Mobile Development", "Cloud Solutions"]
+            }
+          : business.name === "HomeFix Pro"
+          ? {
+              keywords: ["repair", "renovation", "maintenance", "install", "fix", "home", "house", "building"],
+              priority: 9,
+              requirements: ["Licensed Contractor", "HVAC Certified", "Electrical License"],
+              specializations: ["Home Renovation", "HVAC Systems", "Electrical Work", "Plumbing"]
+            }
+          : {
+              keywords: ["health", "medical", "wellness", "care", "treatment", "therapy", "diagnosis"],
+              priority: 7,
+              requirements: ["Medical License", "Board Certification", "HIPAA Compliance"],
+              specializations: ["Primary Care", "Preventive Medicine", "Telemedicine"]
+            }
+      });
+      console.log(`Created business profile for ${business.name}`);
+    } catch (error) {
+      console.error(`Error creating sample business ${business.name}:`, error);
+    }
+  }
 }

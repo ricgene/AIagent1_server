@@ -1,6 +1,12 @@
 import OpenAI from "openai";
 import type { Business } from "@shared/schema";
 
+
+// Your existing code here, but with this corrected import
+// You may need to update the OpenAI client initialization to:
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+
 if (!process.env.OPENAI_API_KEY) {
   throw new Error("OPENAI_API_KEY environment variable is required");
 }

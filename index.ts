@@ -1,18 +1,21 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes.js";
-import { setupVite, serveStatic, log } from "./vite.js";
 
+// Initialize Express app
 const app = express();
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Add logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
-  res.json = function (bodyJson: any) {
+  res.json = function(bodyJson: any) {
     capturedJsonResponse = bodyJson;
     return originalResJson.call(res, bodyJson);
   };
@@ -29,48 +32,46 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      log(logLine);
+      console.log(logLine);
     }
   });
 
   next();
 });
 
-(async () => {
-  const server = await registerRoutes(app);
+// Error handling middleware
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  res.status(status).json({ message });
+  console.error(err);
+});
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+// Routes setup - shared for both serverless and development
+let setupComplete = false;
+const setupApp = async () => {
+  if (!setupComplete) {
+    await registerRoutes(app);
+    setupComplete = true;
   }
+};
 
-  // Set longer timeouts to prevent connection issues
-  server.setTimeout(120000); // 2 minutes
+// For serverless deployment
+export const apiHandler = async (req: Request, res: Response) => {
+  await setupApp();
+  return app(req, res);
+};
 
-  // Clean up function to handle proper shutdown
-  const cleanUp = () => {
-    log("Server shutting down...");
-    server.close(() => {
-      log("Server closed successfully");
-      process.exit(0);
+// For local development
+if (process.env.NODE_ENV === 'development') {
+  (async () => {
+    await setupApp();
+    const port = process.env.PORT || 5000;
+    app.listen(port, () => {
+      console.log(`Server running on port ${port}`);
     });
-  };
+  })();
+}
 
-  // Register cleanup handlers
-  process.on("SIGINT", cleanUp);
-  process.on("SIGTERM", cleanUp);
-
-  // ALWAYS serve the app on port 5000
-  server.listen(5000, "0.0.0.0", () => {
-    log("Server running on port 5000");
-  });
-})();
+// CommonJS style export for Cloud Functions
+exports.apiHandler = apiHandler;
