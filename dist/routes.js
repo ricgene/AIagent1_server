@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerRoutes = registerRoutes;
-const schema_js_1 = require("@shared/schema.js");
+const schema_js_1 = require("./shared/schema.js");
 const anthropic_js_1 = require("./anthropic.js");
 const zod_1 = require("zod");
 const assistant_js_1 = require("./assistant.js");

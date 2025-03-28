@@ -338,5 +338,10 @@ app.all('*', (req, res) => {
   });
 });
 
+// Make sure we're listening on the correct port for Cloud Run
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
 // Export for Cloud Functions
 exports.helloWorld = app;

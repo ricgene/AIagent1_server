@@ -1,5 +1,5 @@
-import { users, businesses, messages } from "@shared/schema";
-import type { User, Business, Message, InsertUser, InsertBusiness, InsertMessage } from "@shared/schema";
+import { users, businesses, messages } from "./shared/schema.js";
+import type { User, Business, Message, InsertUser, InsertBusiness, InsertMessage } from "./shared/schema.js";
 
 export interface IStorage {
   // User operations

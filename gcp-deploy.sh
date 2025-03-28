@@ -81,7 +81,7 @@ fi
 # Deploy to GCP Cloud Functions using the simplified approach
 echo -e "${GREEN}Deploying to GCP Cloud Functions...${NC}"
 gcloud functions deploy ai-api-handler \
-  --runtime nodejs18 \
+  --runtime nodejs20 \
   --trigger-http \
   --allow-unauthenticated \
   --entry-point=apiHandler \

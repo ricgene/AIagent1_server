@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { insertUserSchema, insertBusinessSchema, insertMessageSchema } from "@shared/schema.js";
+import { insertUserSchema, insertBusinessSchema, insertMessageSchema } from "./shared/schema.js";
 import { matchBusinessesToQuery } from "./anthropic.js";
 import { ZodError } from "zod";
 import { getAssistantResponse } from "./assistant.js";

@@ -14,8 +14,6 @@ export interface User extends InsertUser {
   id: number;
 }
 
-export const users: User[] = [];
-
 // Business schema
 export const insertBusinessSchema = z.object({
   description: z.string(),
@@ -44,8 +42,6 @@ export interface IndustryRule {
   specializations?: string[];
 }
 
-export const businesses: Business[] = [];
-
 // Message schema
 export const insertMessageSchema = z.object({
   fromId: z.number(),
@@ -62,4 +58,7 @@ export interface Message extends InsertMessage {
   isAiAssistant: boolean;
 }
 
+// Arrays for in-memory storage - declared only once
+export const users: User[] = [];
+export const businesses: Business[] = [];
 export const messages: Message[] = [];

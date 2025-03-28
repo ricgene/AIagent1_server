@@ -1,4 +1,4 @@
-import type { Message } from "@shared/schema";
+import type { Message } from "./shared/schema.js";
 import Anthropic from "@anthropic-ai/sdk";
 
 // Initialize Anthropic client
